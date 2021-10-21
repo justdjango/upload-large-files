@@ -1,0 +1,142 @@
+<link href="https://unpkg.com/tailwindcss@^2/dist/tailwind.min.css" rel="stylesheet">
+
+<div class="max-w-4xl mx-auto py-5">
+    <h1 class="text-2xl text-gray-800 mb-3">Upload a Large File</h1>
+    <form method="post" id="fileForm" enctype="multipart/form-data">
+        {% csrf_token %}
+        {{ form }}
+        <div class="mt-3">
+            <div class="mt-3">
+                <div class="shadow w-full bg-gray-100">
+                    <div id="progressBar" class="bg-blue-500 text-xs leading-none py-1 text-center text-gray-800"
+                        style="width: 0%">0%</div>
+                </div>
+            </div>
+            <div class="mt-2">
+                <h3 id="status"></h3>
+            </div>
+        </div>
+        <hr class="mt-5" />
+        <button type="submit" id="submitBtn"
+            class="mt-5 rounded shadow-md px-3 py-1 text-lg text-white bg-blue-500 hover:bg-blue-600">
+            Submit
+        </button>
+    </form>
+    <hr class="mt-5" />
+    <div class="mt-5">
+        <h3 class="text-lg text-gray-800 mb-3">Upload History</h3>
+        {% for upload in uploads %}
+        <div class="py-5 px-3 border border-gray-200 bg-gray-50">
+            {{ upload.file.name }}
+        </div>
+        {% empty %}
+        <p class="text-gray-800">No uploads</p>
+        {% endfor %}
+    </div>
+</div>
+
+<script>
+    let submitting = false
+    let file = null
+
+    function setIsSubmitting(val) {
+        submitting = val
+    }
+
+    function setFile(val) {
+        file = val
+    }
+
+    _("id_file").addEventListener("change", event => {
+        setFile(event.target.files[0])
+    })
+
+    _("submitBtn").addEventListener("click", event => {
+        handleSubmit(event)
+        _("submitBtn").disabled = true
+    })
+
+    const handleSubmit = async event => {
+
+        setIsSubmitting(true)
+
+        const signedUrl = await getSignedUrl()
+
+        try {
+            uploadFile(signedUrl)
+        }
+        catch (err) {
+            setIsSubmitting(false)
+            console.log(err)
+            alert('There was an error uploading your file.')
+            throw err
+        }
+
+        setIsSubmitting(false)
+    }
+
+    const getSignedUrl = async () => {
+        const body = {
+            fileName: file.name,
+            fileType: file.type,
+        }
+
+        const response = await fetch("{% url 'signed-url' %}", {
+            method: 'POST',
+            body: JSON.stringify(body),
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': "{{ csrf_token }}" }
+        })
+        const { url } = await response.json()
+        return url
+    }
+
+    function _(el) {
+        return document.getElementById(el);
+    }
+
+    function uploadFile(signedUrl) {
+        var formdata = new FormData();
+        formdata.append("file", file);
+        var ajax = new XMLHttpRequest();
+        ajax.upload.addEventListener("progress", progressHandler, false);
+        ajax.addEventListener("load", completeHandler, false);
+        ajax.addEventListener("error", errorHandler, false);
+        ajax.addEventListener("abort", abortHandler, false);
+        ajax.addEventListener("loadend", loadendHandler, false)
+        ajax.open("PUT", signedUrl);
+        ajax.setRequestHeader('Content-Type', file.type)
+        ajax.setRequestHeader('x-amz-acl', 'public-read')
+        ajax.send(formdata);
+    }
+
+    async function submitForm() {
+        _("fileForm").submit()
+    }
+
+    async function loadendHandler(event) {
+        _("submitBtn").disabled = false
+        await submitForm()
+    }
+
+    function progressHandler(event) {
+        var percent = Math.round((event.loaded / event.total) * 100);
+        _("progressBar").style.width = `${percent}%`;
+        _("progressBar").innerText = `${percent}%`;
+        _("status").innerHTML = percent + "% uploaded... please wait";
+    }
+
+    function completeHandler(event) {
+        _("status").innerHTML = event.target.responseText;
+        _("progressBar").style.width = 0;
+        _("progressBar").innerText = "0%";
+    }
+
+    function errorHandler(event) {
+        _("status").innerHTML = "Upload Failed";
+    }
+
+    function abortHandler(event) {
+        _("status").innerHTML = "Upload Aborted";
+    }
+
+</script>
